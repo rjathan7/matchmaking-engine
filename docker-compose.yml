@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: matchmaking-postgres
+    environment:
+      POSTGRES_DB: matchmaking
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    container_name: matchmaking-redis
+    ports:
+      - "6379:6379"
