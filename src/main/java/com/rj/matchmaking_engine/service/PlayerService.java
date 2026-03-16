@@ -1,6 +1,7 @@
 package com.rj.matchmaking_engine.service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -12,11 +13,14 @@ import com.rj.matchmaking_engine.repository.PlayerRepository;
 public class PlayerService {
     
     private static final int MAX_PLAYERS = 1000;
+    private static final Set<String> VALID_REGIONS = Set.of("NA", "EU", "ASIA");
 
     private final PlayerRepository playerRepository;
+    private final QueueService queueService;
 
-    public PlayerService(PlayerRepository playerRepository) {
+    public PlayerService(PlayerRepository playerRepository, QueueService queueService) {
         this.playerRepository = playerRepository;
+        this.queueService = queueService;
     }
 
     public Player createPlayer(UUID player_id, String region, int initialElo) {
@@ -25,6 +29,9 @@ public class PlayerService {
         }
         if (playerRepository.existsById(player_id)) {
             throw new IllegalArgumentException("player already exists");
+        }
+        if (region == null || !VALID_REGIONS.contains(region.toUpperCase())) {
+            throw new IllegalArgumentException("invalid region, must be NA, EU or ASIA");
         }
 
         Player player = new Player();
@@ -41,5 +48,6 @@ public class PlayerService {
 
     public void deleteAllPlayers() {
         playerRepository.deleteAll();
+        queueService.clearAllQueues();
     }
 }
