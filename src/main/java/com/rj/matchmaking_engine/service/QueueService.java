@@ -50,13 +50,18 @@ public class QueueService {
         return System.currentTimeMillis() - score.longValue();
     }
 
-    // Check if player is already in any queue
+    // Check if player is in any queue
     public boolean isPlayerQueued(String playerId) {
         for (String region : REGIONS) {
             Double score = redisTemplate.opsForZSet().score(QUEUE_PREFIX + region, playerId);
             if (score != null) return true;
         }
         return false;
+    }
+
+    // Check if player is in a specific region's queue
+    public boolean isPlayerQueued(String playerId, String region) {
+        return redisTemplate.opsForZSet().score(QUEUE_PREFIX + region, playerId) != null;
     }
 
     // Clear all region queues (used for reset)
