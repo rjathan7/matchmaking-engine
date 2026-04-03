@@ -29,10 +29,11 @@ public class QueueService {
         redisTemplate.opsForZSet().add(key, playerId, score);
     }
 
-    // Remove player from their region's queue
-    public void removeFromQueue(String playerId, String region) {
+    // Remove player from their region's queue — returns true if they were actually removed
+    public boolean removeFromQueue(String playerId, String region) {
         String key = QUEUE_PREFIX + region;
-        redisTemplate.opsForZSet().remove(key, playerId);
+        Long removed = redisTemplate.opsForZSet().remove(key, playerId);
+        return removed != null && removed > 0;
     }
 
     // Get all players in a region queue ordered by wait time (longest first)

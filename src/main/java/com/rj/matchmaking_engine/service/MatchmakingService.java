@@ -8,6 +8,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,7 +41,9 @@ public class MatchmakingService {
     @Scheduled(fixedDelay = 2000)
     public void runMatchmakingCycle() {
         try {
-            for (String region : REGIONS) {
+            List<String> regions = Arrays.asList(REGIONS);
+            Collections.shuffle(regions);
+            for (String region : regions) {
                 processRegionQueue(region);
             }
         } catch (Exception e) {
@@ -111,10 +115,21 @@ public class MatchmakingService {
     }
 
     private void createMatch(String player1Id, String player2Id, String region) {
-        // Remove both players from all regions (handles same-region and cross-region matches)
+        // Atomically claim both players — abort if either was already taken by another thread
+        boolean p1Removed = queueService.removeFromQueue(player1Id, region);
+        boolean p2Removed = queueService.removeFromQueue(player2Id, region);
+
+        if (!p1Removed || !p2Removed) {
+            // One or both players already claimed — undo and skip
+            return;
+        }
+
+        // Clean up any cross-region queue entries
         for (String r : REGIONS) {
-            queueService.removeFromQueue(player1Id, r);
-            queueService.removeFromQueue(player2Id, r);
+            if (!r.equals(region)) {
+                queueService.removeFromQueue(player1Id, r);
+                queueService.removeFromQueue(player2Id, r);
+            }
         }
 
         Match match = new Match();
