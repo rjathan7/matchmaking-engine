@@ -91,12 +91,13 @@ An async Python script that generates players, sends queue join requests, polls 
 
 The worker runs every 2 seconds and processes each region independently:
 
-1. Fetch all players in the region's queue, ordered by wait time (longest first)
-2. For each player, calculate their current Elo tolerance based on how long they've waited
-3. Look up the player's Elo from Redis cache (fast, avoids DB hit)
-4. Scan the queue for the closest Elo match within tolerance
-5. If no match found and wait time exceeds 30 seconds, search other regions (cross-region fallback)
-6. If a match is found, remove both players from all queues and save a PENDING match to Postgres
+1. Shuffle the region processing order randomly (prevents NA/EU/ASIA always going first)
+2. Fetch all players in the region's queue, ordered by wait time (longest first)
+3. For each player, calculate their current Elo tolerance based on how long they've waited
+4. Look up the player's Elo from Redis cache (fast, avoids DB hit)
+5. Scan the queue for the closest Elo match within tolerance
+6. If no match found and wait time exceeds 30 seconds, search other regions (cross-region fallback)
+7. If a match is found, atomically remove both players from their queues using `ZREM` — if either player was already claimed by another thread, the match is aborted
 
 **Elo tolerance expansion:**
 - Starts at ±100
@@ -104,6 +105,11 @@ The worker runs every 2 seconds and processes each region independently:
 - After 30 seconds, cross-region matching activates
 
 This means tight, fair matches happen quickly. Players who wait longer accept progressively wider Elo gaps to avoid waiting forever. In small queues, the system will eventually match any two remaining players even if their Elos are far apart.
+
+**Fairness under concurrent load:**
+- Region shuffle ensures no region is always processed first across cycles
+- Atomic `ZREM` prevents a player from being matched twice if an HTTP thread removes them from the queue at the same time the worker is trying to match them
+- Wait-time ordering ensures longest-waiting players are always considered first within each cycle
 
 ---
 
@@ -266,3 +272,4 @@ The JVM heap is capped in the Dockerfile (`-Xms128m -Xmx256m`) to prevent the JV
 - Simulation client runs locally, not on the server
 - Match duration is instant in simulation — no real game time modeled
 - Players join in bursts per round rather than continuously
+- Greedy matching (longest-waiting player picks their best opponent first) rather than globally optimal pairing — a production system would use a stable matching algorithm across all queued players simultaneously
