@@ -194,28 +194,85 @@ Wait times show matchmaking quality:
 
 ## Deployment
 
-### Prerequisites
-- Docker and Docker Compose installed on EC2
-- Port 8080 open in the EC2 security group
+### EC2 Setup
 
-### Steps
+1. Launch a **t2.micro** instance (Amazon Linux 2023, free tier)
+2. Create and download a `.pem` key pair
+3. Add inbound rules in the security group:
+   - SSH — port 22 — My IP
+   - Custom TCP — port 8080 — Anywhere (0.0.0.0/0)
+4. Set a billing alert in AWS Budgets ($5/month threshold) to catch unexpected charges
 
-```bash
-# SSH into EC2
-ssh -i your-key.pem ec2-user@<ec2-public-ip>
+### SSH Into the Instance
 
-# Clone the repo
-git clone <repo-url>
-cd matchmaking-service
+```powershell
+# Fix key permissions (required by SSH)
+icacls "C:\Users\<you>\.ssh\matchmaking-key.pem" /inheritance:r /grant:r "$env:USERNAME:R"
 
-# Start all containers
-docker compose up -d
-
-# Check logs
-docker logs matchmaking-service
+# Connect
+ssh -i "C:\Users\<you>\.ssh\matchmaking-key.pem" ec2-user@<ec2-public-ip>
 ```
 
-The `depends_on` healthchecks in `docker-compose.yml` ensure Postgres and Redis are fully ready before the Spring Boot app starts.
+### Install Docker on EC2
+
+```bash
+sudo yum update -y
+sudo yum install -y docker git
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Log out and back in so docker group takes effect
+exit
+```
+
+> **Note:** Amazon Linux 2023 ships with an outdated Docker Buildx that will fail with `compose build requires buildx 0.17.0 or later`. Fix it before deploying:
+> ```bash
+> mkdir -p ~/.docker/cli-plugins
+> curl -L "https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
+> chmod +x ~/.docker/cli-plugins/docker-buildx
+> ```
+
+### Deploy
+
+```bash
+git clone https://github.com/rjathan7/matchmaking-engine.git
+cd matchmaking-engine
+docker-compose up -d
+```
+
+The first run takes ~2 minutes — it pulls Postgres and Redis images and builds the Spring Boot image from source via Maven.
+
+The `depends_on` healthchecks ensure Postgres and Redis are fully ready before the app starts.
+
+### Check Logs
+
+```bash
+docker logs matchmaking-service -f
+```
+
+Wait for `Started MatchmakingEngineApplication`. Press `Ctrl+C` to stop following logs — the containers keep running.
+
+### Useful Commands
+
+```bash
+# Check container status
+docker-compose ps
+
+# Restart containers
+docker-compose restart
+
+# Pull new code and redeploy
+git pull && docker-compose up -d --build
+
+# Stop everything
+docker-compose down
+```
+
+> You do not need to stay SSH'd in. Containers run in detached mode and persist until explicitly stopped.
 
 ### Running locally (development)
 
@@ -223,12 +280,9 @@ Start Postgres and Redis via Docker, run Spring Boot directly:
 
 ```bash
 # Start dependencies only
-docker compose up postgres redis -d
+docker-compose up postgres redis -d
 
 # Run the app
-mvn spring-boot:run
-
-# Or with the JAR
 mvn package -DskipTests
 java -Xms128m -Xmx256m -jar target/matchmaking-engine-0.0.1-SNAPSHOT.jar
 ```
